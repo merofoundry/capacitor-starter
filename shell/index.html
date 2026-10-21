@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>App shell</title>
+    <link rel="stylesheet" href="shell.css">
+  </head>
+  <body>
+    <main>
+      <section class="screen" data-view="boot" aria-busy="true">
+        <div class="mark" aria-hidden="true"></div>
+        <h1 data-field="appName">Loading</h1>
+        <p class="muted">Loading…</p>
+      </section>
+
+      <section class="screen" data-view="privacy" hidden>
+        <div class="mark" aria-hidden="true"></div>
+        <h1 data-field="appName">App</h1>
+      </section>
+
+      <section class="screen" data-view="lock" hidden>
+        <div class="mark" aria-hidden="true"></div>
+        <h1 data-field="appName">App</h1>
+        <p data-field="lockMessage" role="status">Unlock to continue.</p>
+        <button type="button" class="primary" data-action="unlock">Unlock</button>
+      </section>
+
+      <section class="screen" data-view="offline" hidden>
+        <h1>You are offline</h1>
+        <p data-field="offlineMessage" role="status">The app could not reach its server.</p>
+        <p class="muted" data-field="host"></p>
+        <button type="button" class="primary" data-action="retry">Try again</button>
+        <button type="button" data-action="openSettings">Settings</button>
+      </section>
+
+      <section class="screen settings" data-view="settings" hidden>
+        <h1>Settings</h1>
+        <dl>
+          <dt>App</dt>
+          <dd data-field="appName"></dd>
+          <dt>Version</dt>
+          <dd data-field="appVersion"></dd>
+          <dt>Shell</dt>
+          <dd data-field="starterVersion"></dd>
+          <dt>Server</dt>
+          <dd data-field="host"></dd>
+        </dl>
+        <label class="toggle">
+          <input type="checkbox" id="lock-toggle" data-action="setLock">
+          <span data-field="lockLabel">App lock</span>
+        </label>
+        <p class="muted" data-field="lockHint">Ask for Face ID, Touch ID, fingerprint or passcode when the app opens. This setting stays on this device.</p>
+        <p class="error" data-field="settingsError" role="alert"></p>
+        <button type="button" data-action="signOut">Sign out</button>
+        <p class="muted">Sign out removes this app's cookies on this device and reloads the site.</p>
+        <button type="button" class="primary" data-action="closeSettings">Done</button>
+      </section>
+    </main>
+    <script src="deep-link.js"></script>
+    <script src="channel.js"></script>
+    <script src="controller.js"></script>
+    <script src="view.js"></script>
+    <script src="main.js"></script>
+  </body>
+</html>

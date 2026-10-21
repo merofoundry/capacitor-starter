@@ -1,0 +1,15 @@
+{
+  "name": "meroshell-bootstrap",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native bootstrap of the MeroFoundry Capacitor starter: overlay shell, app lock, offline screen, deep links and hosted-page integration. Starter-only; not a general bridge.",
+  "license": "MIT",
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  }
+}

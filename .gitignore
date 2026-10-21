@@ -1,0 +1,22 @@
+# Dependencies
+/node_modules
+
+# Generated on every iOS run by `npx cap add ios`; never committed
+/ios/
+
+# Artwork generated from assets/icon.png and assets/splash.png by `npm run assets`
+/.assets-build/
+/android/app/src/main/res/mipmap-*/
+/android/app/src/main/res/drawable*/splash.png
+
+# Build output
+/build/
+/fastlane/report.xml
+/fastlane/README.md
+*.aab
+*.apk
+*.ipa
+*.dSYM.zip
+*.mobileprovision
+*.keystore
+*.jks

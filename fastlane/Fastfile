@@ -1,0 +1,50 @@
+# iOS release lane run by .github/workflows/ios.yml after `npx cap add ios`, `npx cap sync ios`,
+# `npm run ios:prepare` and `npm run assets -- --ios`. Signing material is read from your
+# existing match repository and never created or changed here.
+require 'json'
+
+default_platform(:ios)
+
+PROJECT = 'ios/App/App.xcodeproj'
+
+platform :ios do
+  desc 'Build the Release app, sign it with match (readonly) and upload it to TestFlight'
+  lane :release do
+    # Fastfile code runs in ./fastlane; actions resolve paths from the project root.
+    app_id = JSON.parse(File.read('../starter.config.json'))['appId']
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch('APP_STORE_CONNECT_API_KEY_ID'),
+      issuer_id: ENV.fetch('APP_STORE_CONNECT_API_ISSUER_ID'),
+      key_content: ENV.fetch('APP_STORE_CONNECT_API_KEY_CONTENT'),
+      is_key_content_base64: true
+    )
+
+    setup_ci
+    match(
+      type: 'appstore',
+      readonly: true,
+      app_identifier: app_id,
+      team_id: ENV.fetch('APPLE_TEAM_ID'),
+      git_url: ENV.fetch('MATCH_GIT_URL'),
+      api_key: api_key
+    )
+    update_code_signing_settings(
+      path: PROJECT,
+      targets: ['App'],
+      build_configurations: ['Release'],
+      use_automatic_signing: false,
+      team_id: ENV.fetch('APPLE_TEAM_ID'),
+      code_sign_identity: 'Apple Distribution',
+      profile_name: ENV.fetch("sigh_#{app_id}_appstore_profile-name")
+    )
+    build_app(
+      project: PROJECT,
+      scheme: 'App',
+      configuration: 'Release',
+      export_method: 'app-store',
+      output_directory: 'build/ios',
+      xcargs: "CURRENT_PROJECT_VERSION=#{ENV.fetch('BUILD_NUMBER')}"
+    )
+    upload_to_testflight(api_key: api_key, skip_waiting_for_build_processing: true)
+  end
+end
