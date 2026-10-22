@@ -18,7 +18,7 @@ import java.io.ByteArrayInputStream;
 import org.json.JSONObject;
 
 /**
- * The bundled shell screens (shell/index.html) in a plain WebView laid over the hosted one.
+ * The bundled shell screens (shell/, packaged as public/meroshell/) in a plain WebView laid over the hosted one.
  * It has no Capacitor bridge: its only native surface is the MeroShellNative interface, and
  * it can load nothing but the app's own bundled assets.
  */
@@ -29,7 +29,7 @@ final class ShellOverlay {
     }
 
     private static final String ASSET_HOST = "appassets.androidplatform.net";
-    private static final String INDEX_URL = "https://" + ASSET_HOST + "/assets/public/index.html";
+    private static final String INDEX_URL = "https://" + ASSET_HOST + "/assets/public/meroshell/index.html";
 
     private final WebView webView;
 

@@ -3,6 +3,9 @@ ext {
     androidxCoreVersion = project.hasProperty('androidxCoreVersion') ? rootProject.ext.androidxCoreVersion : '1.17.0'
     androidxWebkitVersion = project.hasProperty('androidxWebkitVersion') ? rootProject.ext.androidxWebkitVersion : '1.14.0'
     androidxBiometricVersion = project.hasProperty('androidxBiometricVersion') ? rootProject.ext.androidxBiometricVersion : '1.1.0'
+    androidxBrowserVersion = project.hasProperty('androidxBrowserVersion') ? rootProject.ext.androidxBrowserVersion : '1.9.0'
+    androidxSecurityCryptoVersion = project.hasProperty('androidxSecurityCryptoVersion') ? rootProject.ext.androidxSecurityCryptoVersion : '1.1.0'
+    firebaseMessagingVersion = project.hasProperty('firebaseMessagingVersion') ? rootProject.ext.firebaseMessagingVersion : '25.0.1'
 }
 
 apply plugin: 'com.android.library'
@@ -31,4 +34,9 @@ dependencies {
     implementation "androidx.core:core:$androidxCoreVersion"
     implementation "androidx.webkit:webkit:$androidxWebkitVersion"
     implementation "androidx.biometric:biometric:$androidxBiometricVersion"
+    implementation "androidx.browser:browser:$androidxBrowserVersion"
+    implementation "androidx.security:security-crypto:$androidxSecurityCryptoVersion"
+    // Push through Firebase Cloud Messaging. Without android/app/google-services.json Firebase
+    // is not configured and the shell reports push as unavailable.
+    implementation "com.google.firebase:firebase-messaging:$firebaseMessagingVersion"
 }

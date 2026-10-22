@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 import WebKit
 
-/// The bundled shell screens (public/index.html) in a plain WKWebView laid over the hosted
+/// The bundled shell screens (public/meroshell/index.html) in a plain WKWebView laid over the hosted
 /// one. It has no Capacitor bridge: its only native surface is the `meroShell` message
 /// handler, and it can load nothing but the app's own bundled files.
 final class ShellOverlay: NSObject, WKNavigationDelegate {
@@ -38,7 +38,7 @@ final class ShellOverlay: NSObject, WKNavigationDelegate {
     }
 
     func load() {
-        guard let index = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "public") else {
+        guard let index = Bundle.main.url(forResource: "index", withExtension: "html", subdirectory: "public/meroshell") else {
             return
         }
         root = index.deletingLastPathComponent()

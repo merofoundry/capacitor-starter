@@ -16,10 +16,11 @@ const COPIED = ['package.json', 'capacitor.config.ts', 'lib', 'scripts', 'shell'
 const CLI = path.join(ROOT, 'node_modules', '@capacitor', 'cli', 'bin', 'capacitor');
 
 /**
- * @param {{starter?: object, withAndroid?: boolean}} [options]
+ * @param {{starter?: object, withAndroid?: boolean, siteFiles?: Record<string, string>}} [options]
+ *   siteFiles: an already-built site written to site/ (for a bundled starter whose site is "site")
  * @returns {string} the fixture root
  */
-function starterCopy({ starter, withAndroid = false } = {}) {
+function starterCopy({ starter, withAndroid = false, siteFiles } = {}) {
   const dir = tempDir('meroshell-starter-');
   for (const entry of COPIED) {
     fs.cpSync(path.join(ROOT, entry), path.join(dir, entry), { recursive: true });
@@ -32,6 +33,10 @@ function starterCopy({ starter, withAndroid = false } = {}) {
   }
   const config = starter || JSON.parse(fs.readFileSync(path.join(ROOT, 'starter.config.json'), 'utf8'));
   fs.writeFileSync(path.join(dir, 'starter.config.json'), JSON.stringify(config, null, 2) + '\n');
+  for (const [name, text] of Object.entries(siteFiles || {})) {
+    fs.mkdirSync(path.dirname(path.join(dir, 'site', name)), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'site', name), text);
+  }
   fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'), 'dir');
   return dir;
 }
@@ -52,6 +57,15 @@ function cap(dir, args, env = {}) {
   return run;
 }
 
+/** Assemble www/ in `dir` with the starter's own `npm run web` script. */
+function prepareWeb(dir) {
+  const run = node(dir, ['scripts/prepare-web.cjs']);
+  if (run.status !== 0) {
+    throw new Error(`prepare-web failed (${run.status}):\n${run.stdout}\n${run.stderr}`);
+  }
+  return run;
+}
+
 /** Run a starter script with node in `dir`. */
 function node(dir, args, env = {}) {
   const baseEnv = { ...process.env };
@@ -59,4 +73,4 @@ function node(dir, args, env = {}) {
   return spawnSync(process.execPath, args, { cwd: dir, env: { ...baseEnv, ...env }, encoding: 'utf8' });
 }
 
-module.exports = { ROOT, cap, node, starterCopy };
+module.exports = { ROOT, cap, node, prepareWeb, starterCopy };

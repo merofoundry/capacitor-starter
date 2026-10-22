@@ -200,6 +200,7 @@ test('settings opened from the hosted page cover it and show host and versions',
   assert.equal(view.current.data.appVersion, '1.4.0 (12)');
   assert.equal(view.current.data.starterVersion, '1.0.0');
   assert.equal(view.current.data.lockEnabled, false);
+  assert.equal(view.current.data.modeLabel, 'Remote', 'a launch without a mode is remote');
   await controller.act('closeSettings');
   await flush();
   assert.equal(native.commands().at(-1), 'reveal');
@@ -398,4 +399,246 @@ test('the deep-link host is the host the native side reports, not a hard-coded o
   controller.handleEvent('deepLink', { url: 'https://preview-shop.example.com/b' });
   await flush();
   assert.deepEqual(native.calls.filter((c) => c.cmd === 'loadHost').map((c) => c.args.path), ['/b']);
+});
+
+// Push taps, sign-out cleanup and the settings line (D.16, D.17, E.21). The native side is the
+// FakeNative double: nothing here shows how APNs, FCM or a device deliver a tap.
+
+const { PUSH_DISABLE_TIMEOUT_MS } = require('../shell/controller.js');
+
+const APP = '0f9c2a64-3b1e-4c6d-9a7e-5d2b8c1e4f30';
+const BUNDLED = { mode: 'bundled', localOrigin: 'capacitor://localhost' };
+
+/** A push-capable shell whose host probe answers the application id; timers are under test control. */
+function pushSetup(launch = {}) {
+  const native = new FakeNative({ pushSupported: true, ...launch });
+  native.answer('fetchHost', (args) => ({ status: 200, body: JSON.stringify(args.path.includes('by-host') ? { id: APP } : {}) }));
+  native.answer('disablePush', () => ({ ok: true }));
+  const view = new FakeView();
+  const timers = [];
+  const logged = [];
+  const controller = createController({
+    native,
+    view,
+    schedule: (fn, ms) => timers.push({ fn, ms }),
+    log: (...args) => logged.push(args.map(String).join(' ')),
+  });
+  return { native, view, controller, timers, logged };
+}
+
+async function pushStarted(launch) {
+  const s = pushSetup(launch);
+  await s.controller.start();
+  await flush();
+  return s;
+}
+
+const loads = (native) => native.calls.filter((c) => c.cmd === 'loadHost').map((c) => c.args.path);
+
+test('a push-capable shell probes the host and tells native the application id once', async () => {
+  const { native, controller } = await pushStarted();
+  assert.deepEqual(native.calls.filter((c) => c.cmd === 'setPushApplication').map((c) => c.args), [{ applicationId: APP }]);
+  await controller.handleEvent('pageLoaded', { url: 'https://shop.example.com/' });
+  assert.equal(native.count('setPushApplication'), 1);
+  assert.equal(native.count('setHostCapabilities'), 0, 'push alone announces no provider sign-in');
+});
+
+test('without push support no application id is sent and no push command is used', async () => {
+  const { native, controller } = await revealed();
+  await controller.handleEvent('pushTapped', { path: '/orders/7' });
+  await controller.act('openSettings');
+  await controller.act('signOut');
+  for (const cmd of ['setPushApplication', 'getPushState', 'disablePush', 'resetPush', 'pushEvent']) {
+    assert.equal(native.count(cmd), 0, cmd);
+  }
+});
+
+for (const [mode, launch, url] of [
+  ['remote', {}, 'https://shop.example.com/'],
+  ['bundled', BUNDLED, 'capacitor://localhost/'],
+]) {
+  test(`${mode}: an accepted tap on a running shell opens its path once`, async () => {
+    const { native, controller } = await pushStarted(launch);
+    await controller.handleEvent('pageLoaded', { url });
+    await controller.handleEvent('pushTapped', { path: '/orders/7?tab=items#line-2' });
+    await controller.handleEvent('pageLoaded', { url });
+    assert.deepEqual(loads(native), ['/orders/7?tab=items#line-2']);
+  });
+
+  test(`${mode}: a cold-start tap waits for launch, the first page and the probe, then opens once`, async () => {
+    const { native, controller } = pushSetup(launch);
+    native.hold('ready');
+    native.hold('fetchHost');
+    const starting = controller.start();
+    controller.handleEvent('pushTapped', { path: '/orders/7' });
+    await flush();
+    assert.deepEqual(native.commands(), ['ready'], 'nothing before launch state');
+    await native.release('ready', native.launch);
+    await starting;
+    await flush();
+    assert.deepEqual(loads(native), [], 'not before the first page has loaded');
+    await controller.handleEvent('pageLoaded', { url });
+    assert.deepEqual(loads(native), [], 'not while the host probe is answering');
+    await native.release('fetchHost', { status: 200, body: JSON.stringify({ id: APP }) });
+    await native.release('fetchHost', { status: 200, body: '{}' });
+    await flush();
+    assert.deepEqual(loads(native), ['/orders/7']);
+    await controller.handleEvent('pageLoaded', { url });
+    await controller.handleEvent('pageLoaded', { url });
+    assert.deepEqual(loads(native), ['/orders/7'], 'delivered once');
+  });
+
+  test(`${mode}: a later tap replaces a pending one, and only the last is opened`, async () => {
+    const { native, controller } = await pushStarted(launch);
+    await controller.handleEvent('pushTapped', { path: '/a' });
+    await controller.handleEvent('pushTapped', { path: '/b' });
+    await controller.handleEvent('pageLoaded', { url });
+    assert.deepEqual(loads(native), ['/b']);
+  });
+
+  test(`${mode}: invalid tap paths never navigate and are reported by reason only once a page is loaded`, async () => {
+    const { native, controller, logged } = await pushStarted(launch);
+    const secret = '/x'.repeat(600);
+    const bad = ['//evil.example.com/a', 'https://evil.example.com/', 'orders/7', '/a\\b', '/a b', secret, 42, { path: '/a' }];
+    for (const path of bad) {
+      await controller.handleEvent('pushTapped', { path });
+    }
+    assert.equal(native.count('pushEvent'), 0, 'held until a page is ready');
+    await controller.handleEvent('pageLoaded', { url });
+    assert.deepEqual(loads(native), []);
+    assert.deepEqual(native.calls.filter((c) => c.cmd === 'pushEvent').map((c) => c.args), [
+      { type: 'rejected', reason: 'not_absolute' },
+      { type: 'rejected', reason: 'not_absolute' },
+      { type: 'rejected', reason: 'not_absolute' },
+      { type: 'rejected', reason: 'invalid_characters' },
+      { type: 'rejected', reason: 'invalid_characters' },
+      { type: 'rejected', reason: 'too_long' },
+      { type: 'rejected', reason: 'not_a_string' },
+      { type: 'rejected', reason: 'not_a_string' },
+    ]);
+    const text = logged.join('\n');
+    assert.doesNotMatch(text, /evil|orders|\/x\/x/, 'diagnostics never carry the path');
+    await controller.handleEvent('pageLoaded', { url });
+    assert.equal(native.count('pushEvent'), bad.length, 'each rejection is reported once');
+  });
+}
+
+test('a tap path at exactly 1024 characters opens; one more is rejected', async () => {
+  const { native, controller } = await pushStarted();
+  await controller.handleEvent('pageLoaded', { url: 'https://shop.example.com/' });
+  const longest = '/' + 'a'.repeat(1023);
+  await controller.handleEvent('pushTapped', { path: longest + 'a' });
+  await controller.handleEvent('pushTapped', { path: longest });
+  assert.deepEqual(loads(native), [longest]);
+  assert.deepEqual(native.calls.filter((c) => c.cmd === 'pushEvent').map((c) => c.args.reason), ['too_long']);
+});
+
+test('a tap without a path opens the app where it is', async () => {
+  const { native, controller } = await pushStarted();
+  await controller.handleEvent('pageLoaded', { url: 'https://shop.example.com/' });
+  await controller.handleEvent('pushTapped', { path: '' });
+  await controller.handleEvent('pushTapped', {});
+  assert.deepEqual(loads(native), []);
+  assert.equal(native.count('pushEvent'), 0);
+});
+
+test('remote: an accepted tap goes through deep-link handling, which closes settings', async () => {
+  const { native, view, controller } = await pushStarted();
+  await controller.handleEvent('pageLoaded', { url: 'https://shop.example.com/' });
+  await controller.act('openSettings');
+  assert.equal(view.current.name, 'settings');
+  await controller.handleEvent('pushTapped', { path: '/api/v1/applications/' + APP + '/auth/oauth/exchange' });
+  assert.deepEqual(loads(native), [], 'an exchange link is refused as a deep link');
+  await controller.handleEvent('pushTapped', { path: '/orders/7' });
+  assert.deepEqual(loads(native), ['/orders/7']);
+  assert.notEqual(view.current.name, 'settings');
+});
+
+test('a tap that arrives while locked loads behind the lock', async () => {
+  const { native, view, controller } = pushSetup({ lockEnabled: true });
+  native.hold('authenticate');
+  await controller.start();
+  await flush();
+  await controller.handleEvent('pageLoaded', { url: 'https://shop.example.com/' });
+  await controller.handleEvent('pushTapped', { path: '/orders/7' });
+  assert.deepEqual(loads(native), ['/orders/7']);
+  assert.equal(view.current.name, 'lock');
+  assert.equal(native.count('reveal'), 0);
+});
+
+test('settings show Notifications On or Off from getPushState, with no toggle', async () => {
+  const { native, view, controller } = await pushStarted();
+  native.answer('getPushState', () => ({ enabled: true, permission: 'granted' }));
+  await controller.act('openSettings');
+  assert.equal(view.current.data.notifications, 'On');
+  native.answer('getPushState', () => ({ enabled: false, permission: 'granted' }));
+  await controller.handleEvent('openSettings', {});
+  assert.equal(view.current.data.notifications, 'Off');
+  native.answer('getPushState', () => Promise.reject(new Error('unavailable')));
+  await controller.act('openSettings');
+  assert.equal(view.current.data.notifications, 'Off');
+  const plain = await revealed();
+  await plain.controller.act('openSettings');
+  assert.equal(plain.view.current.data.notifications, 'Off');
+  assert.equal(plain.native.count('getPushState'), 0);
+});
+
+for (const [mode, launch, first] of [['remote', {}, 'clearCookies'], ['bundled', BUNDLED, 'clearSavedSession']]) {
+  test(`${mode}: sign-out asks the page to disable push before clearing the session`, async () => {
+    const { native, controller } = await pushStarted(launch);
+    native.hold('disablePush');
+    const signingOut = controller.act('signOut');
+    await flush();
+    assert.equal(native.commands().at(-1), 'disablePush');
+    assert.equal(native.count(first), 0, `${first} waits for the page`);
+    await native.release('disablePush', { ok: true });
+    await signingOut;
+    const cmds = native.commands();
+    assert.ok(cmds.indexOf('disablePush') < cmds.indexOf(first));
+    assert.ok(cmds.indexOf(first) < cmds.lastIndexOf('loadHost'));
+    assert.equal(native.count('resetPush'), 0, 'a clean disable needs no reset');
+  });
+
+  test(`${mode}: sign-out continues after ${PUSH_DISABLE_TIMEOUT_MS} ms without an answer and resets push natively`, async () => {
+    const { native, controller, timers, logged } = await pushStarted(launch);
+    native.hold('disablePush');
+    const signingOut = controller.act('signOut');
+    await flush();
+    const timer = timers.find((t) => t.ms === PUSH_DISABLE_TIMEOUT_MS);
+    assert.ok(timer, 'a five-second timer is set');
+    assert.equal(native.count(first), 0);
+    timer.fn();
+    await signingOut;
+    const cmds = native.commands();
+    assert.ok(cmds.indexOf('resetPush') > cmds.indexOf('disablePush'));
+    assert.ok(cmds.indexOf('resetPush') < cmds.indexOf(first));
+    assert.ok(native.count('loadHost') >= 1);
+    assert.match(logged.join('\n'), /push cleanup before sign-out ended: timeout/);
+    await native.release('disablePush', { ok: true });
+    assert.equal(native.count('resetPush'), 1, 'a late answer changes nothing');
+  });
+
+  test(`${mode}: sign-out continues when the page cleanup fails or native refuses`, async () => {
+    for (const answer of [() => ({ ok: false }), () => Promise.reject(new Error('no page'))]) {
+      const { native, controller, logged } = await pushStarted(launch);
+      native.answer('disablePush', answer);
+      native.answer('resetPush', () => Promise.reject(new Error('store')));
+      await controller.act('signOut');
+      const cmds = native.commands();
+      assert.ok(cmds.indexOf('resetPush') < cmds.indexOf(first));
+      assert.ok(cmds.lastIndexOf('loadHost') > cmds.indexOf(first));
+      assert.match(logged.join('\n'), /push cleanup before sign-out ended: failed/);
+      assert.match(logged.join('\n'), /push reset before sign-out failed/);
+      assert.doesNotMatch(logged.join('\n'), /token/i);
+    }
+  });
+}
+
+test('sign-out drops a pending tap, so the next user is not taken to it', async () => {
+  const { native, controller } = await pushStarted();
+  await controller.handleEvent('pushTapped', { path: '/orders/7' });
+  await controller.act('signOut');
+  await controller.handleEvent('pageLoaded', { url: 'https://shop.example.com/' });
+  await flush();
+  assert.deepEqual(loads(native), ['/']);
 });

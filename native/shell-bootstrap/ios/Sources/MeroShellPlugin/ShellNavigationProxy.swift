@@ -4,9 +4,11 @@ import WebKit
 /// Sits in front of Capacitor's navigation delegate for the hosted web view: every call is
 /// forwarded to Capacitor unchanged, and main-frame completion and failure are reported to
 /// the shell. Navigations Capacitor cancels itself (external links, superseded loads) are
-/// not failures.
+/// not failures. Each navigation action is first offered to `onNavigation`, which cancels it by
+/// returning true (a pending provider sign-in's redirect to the provider).
 final class ShellNavigationProxy: NSObject, WKNavigationDelegate {
     private weak var target: WKNavigationDelegate?
+    var onNavigation: ((WKNavigationAction) -> Bool)?
     var onLoaded: ((URL?) -> Void)?
     var onFailed: ((URL?, Error) -> Void)?
 
@@ -21,6 +23,17 @@ final class ShellNavigationProxy: NSObject, WKNavigationDelegate {
 
     override func forwardingTarget(for aSelector: Selector!) -> Any? {
         (target?.responds(to: aSelector) ?? false) ? target : nil
+    }
+
+    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+        if onNavigation?(navigationAction) == true {
+            decisionHandler(.cancel)
+            return
+        }
+        // Capacitor's handler implements this variant only, so forwarding it keeps its handling.
+        if target?.webView?(webView, decidePolicyFor: navigationAction, decisionHandler: decisionHandler) == nil {
+            decisionHandler(.allow)
+        }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {

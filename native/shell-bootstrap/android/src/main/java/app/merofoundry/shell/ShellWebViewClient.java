@@ -1,6 +1,7 @@
 package app.merofoundry.shell;
 
 import android.graphics.Bitmap;
+import android.net.Uri;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
@@ -10,11 +11,15 @@ import com.getcapacitor.BridgeWebViewClient;
 /**
  * Capacitor's WebView client for the hosted site, extended to report whether the main frame
  * loaded or failed. Sub-resource errors and HTTP error statuses are the site's own business
- * and are not reported as offline.
+ * and are not reported as offline. Main-frame navigations are offered to the listener first so
+ * that a pending provider sign-in can cancel the redirect to the provider.
  */
 class ShellWebViewClient extends BridgeWebViewClient {
 
     interface Listener {
+        /** Returns true to cancel the main-frame navigation to {@code url}. */
+        boolean onMainFrameNavigation(Uri url);
+
         void onMainFrameLoaded(String url);
 
         void onMainFrameFailed(String url, int errorCode, String description);
@@ -26,6 +31,14 @@ class ShellWebViewClient extends BridgeWebViewClient {
     ShellWebViewClient(Bridge bridge, Listener listener) {
         super(bridge);
         this.listener = listener;
+    }
+
+    @Override
+    public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+        if (request.isForMainFrame() && listener.onMainFrameNavigation(request.getUrl())) {
+            return true;
+        }
+        return super.shouldOverrideUrlLoading(view, request);
     }
 
     @Override

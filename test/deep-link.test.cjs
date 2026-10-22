@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { resolveDeepLink } = require('../shell/deep-link.js');
+const { resolveDeepLink, resolveLocalPage } = require('../shell/deep-link.js');
 
 const HOST = 'shop.example.com';
 
@@ -49,5 +49,22 @@ test('the resolved path can never re-target another host when appended to the co
     const resolved = resolveDeepLink(url, HOST);
     assert.ok(resolved, url);
     assert.equal(new URL(`https://${HOST}${resolved}`).hostname, HOST, url);
+  }
+});
+
+test('a page of the bundled site resolves on its local origin only', () => {
+  assert.equal(resolveLocalPage('capacitor://localhost/orders?x=1#a', 'capacitor://localhost'), '/orders?x=1#a');
+  assert.equal(resolveLocalPage('https://localhost/', 'https://localhost'), '/');
+  for (const [url, origin] of [
+    ['https://shop.example.com/orders', 'capacitor://localhost'],
+    ['https://localhost/orders', 'capacitor://localhost'],
+    ['capacitor://localhost/orders', 'https://localhost'],
+    ['https://localhost:8443/orders', 'https://localhost'],
+    ['https://user@localhost/orders', 'https://localhost'],
+    ['not a url', 'https://localhost'],
+    ['https://localhost/orders', ''],
+    [undefined, 'https://localhost'],
+  ]) {
+    assert.equal(resolveLocalPage(url, origin), null, `${url} on ${origin}`);
   }
 });

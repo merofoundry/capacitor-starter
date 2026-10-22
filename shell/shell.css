@@ -107,6 +107,14 @@ dd {
   overflow-wrap: anywhere;
 }
 
+.badge {
+  padding: 0 6px;
+  border: 1px solid var(--shell-muted);
+  border-radius: 6px;
+  color: var(--shell-muted);
+  font-size: 0.85rem;
+}
+
 .toggle {
   display: flex;
   align-items: center;

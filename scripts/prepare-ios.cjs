@@ -4,8 +4,8 @@
 /*
  * npm run ios:prepare
  * Run after `npx cap add ios` and `npx cap sync ios`. Applies the Face ID usage text, display
- * name, bundle identifier, associated domains and the Release build guard to the generated
- * project. Safe to run again.
+ * name, bundle identifier, associated domains, the APNs entitlement and AppDelegate forwarding,
+ * and the Release build guard to the generated project. Safe to run again.
  */
 
 const path = require('node:path');

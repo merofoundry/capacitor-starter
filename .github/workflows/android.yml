@@ -47,6 +47,9 @@ jobs:
         id: starter
         run: echo "appId=$(node -p "require('./starter.config.json').appId")" >> "$GITHUB_OUTPUT"
 
+      - name: Assemble the web assets
+        run: npm run web
+
       - name: Sync Android
         run: npx cap sync android
 

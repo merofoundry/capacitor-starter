@@ -16,6 +16,7 @@ const YAML = require('yaml');
 const { ROOT, starterCopy } = require('./helpers/starter-fixture.cjs');
 
 const WORKFLOWS = { ios: 'ios.yml', android: 'android.yml' };
+const BUNDLED = { host: 'shop.example.com', appId: 'com.example.shop', appName: 'Shop', mode: 'bundled', site: 'site' };
 const SECRETS = {
   ios: [
     'APPLE_TEAM_ID',
@@ -117,6 +118,27 @@ for (const platform of Object.keys(WORKFLOWS)) {
     }
   });
 
+  test(`${platform}: assembles www after installing dependencies and before Capacitor generates or syncs`, () => {
+    const { steps } = job(platform);
+    const capacitor = platform === 'ios' ? [/npx cap add ios/, /npx cap sync ios/] : [/npx cap sync android/];
+    inOrder(steps, /^npm ci$/m, /^npm run web$/m, ...capacitor);
+    assert.equal(step(steps, /^npm run web$/m).if, undefined, 'www is assembled on every run');
+  });
+
+  test(`${platform}: the workflow's own web step assembles a bundled site, and the guard refuses a missing one`, () => {
+    const dir = starterCopy({ starter: BUNDLED, siteFiles: { 'index.html': '<!doctype html><title>Shop</title>' } });
+    const steps = job(platform).steps;
+    const exec = (run) => spawnSync('bash', ['-e', '-c', run], { cwd: dir, env: { PATH: process.env.PATH }, encoding: 'utf8' });
+    const web = exec(step(steps, /^npm run web$/m).run);
+    assert.equal(web.status, 0, web.stderr);
+    assert.ok(fs.existsSync(path.join(dir, 'www', 'index.html')));
+    assert.ok(fs.existsSync(path.join(dir, 'www', 'meroshell', 'index.html')));
+    fs.rmSync(path.join(dir, 'site'), { recursive: true });
+    const guard = exec(step(steps, GUARD(platform)).run);
+    assert.equal(guard.status, 1);
+    assert.match(guard.stderr, /site "site"/);
+  });
+
   test(`${platform}: never sets the preview override`, () => {
     assert.doesNotMatch(source(platform), /MEROSHELL_PREVIEW_HOST\s*:/);
   });
@@ -131,6 +153,7 @@ test('ios: macOS runner regenerates the project on every run, prepares it, then 
   inOrder(
     steps,
     GUARD('ios'),
+    /^npm run web$/m,
     /npx cap add ios/,
     /npx cap sync ios/,
     /npm run ios:prepare/,
@@ -166,6 +189,7 @@ test('android: Ubuntu runner builds a signed AAB and uploads it to the internal 
   inOrder(
     steps,
     GUARD('android'),
+    /^npm run web$/m,
     /npx cap sync android/,
     /npm run assets -- --android/,
     /\.\/gradlew bundleRelease/,

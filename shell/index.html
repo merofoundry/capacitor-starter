@@ -44,7 +44,9 @@
           <dt>Shell</dt>
           <dd data-field="starterVersion"></dd>
           <dt>Server</dt>
-          <dd data-field="host"></dd>
+          <dd><span data-field="host"></span> <span class="badge" data-field="modeLabel"></span></dd>
+          <dt>Notifications</dt>
+          <dd data-field="notifications">Off</dd>
         </dl>
         <label class="toggle">
           <input type="checkbox" id="lock-toggle" data-action="setLock">
@@ -53,11 +55,12 @@
         <p class="muted" data-field="lockHint">Ask for Face ID, Touch ID, fingerprint or passcode when the app opens. This setting stays on this device.</p>
         <p class="error" data-field="settingsError" role="alert"></p>
         <button type="button" data-action="signOut">Sign out</button>
-        <p class="muted">Sign out removes this app's cookies on this device and reloads the site.</p>
+        <p class="muted" data-field="signOutHint">Sign out removes this app's cookies on this device and reloads the site.</p>
         <button type="button" class="primary" data-action="closeSettings">Done</button>
       </section>
     </main>
     <script src="deep-link.js"></script>
+    <script src="web-auth.js"></script>
     <script src="channel.js"></script>
     <script src="controller.js"></script>
     <script src="view.js"></script>

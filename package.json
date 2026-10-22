@@ -10,9 +10,11 @@
   },
   "scripts": {
     "test": "node --test \"test/**/*.test.cjs\"",
+    "web": "node scripts/prepare-web.cjs",
     "assets": "node scripts/prepare-assets.cjs",
     "ios:prepare": "node scripts/prepare-ios.cjs",
-    "release:guard": "node scripts/release-guard.cjs"
+    "release:guard": "node scripts/release-guard.cjs",
+    "capacitor:copy:before": "node scripts/prepare-web.cjs"
   },
   "dependencies": {
     "@capacitor/android": "8.5.3",

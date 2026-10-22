@@ -75,7 +75,7 @@
         setDisabled(el, 'retry', retrying);
       },
       settings: function (el, data) {
-        ['appName', 'appVersion', 'starterVersion', 'host'].forEach(function (field) {
+        ['appName', 'appVersion', 'starterVersion', 'host', 'modeLabel', 'notifications', 'signOutHint'].forEach(function (field) {
           setField(el, field, data[field]);
         });
         setField(el, 'lockLabel', LOCK_LABELS[data.biometryKind] || 'App lock');

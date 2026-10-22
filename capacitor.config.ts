@@ -1,6 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
-// The shell's configuration lives in starter.config.json. Set MEROSHELL_PREVIEW_HOST to sync a
+// The shell's configuration lives in starter.config.json, including its mode (remote or
+// bundled). webDir is www/, assembled by `npm run web`. Set MEROSHELL_PREVIEW_HOST to sync a
 // debug build against the preview host; both release workflows and the native release builds
 // refuse a project synced that way.
 // eslint-disable-next-line @typescript-eslint/no-require-imports

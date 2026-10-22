@@ -99,10 +99,11 @@ test('sync registers the shell bootstrap and copies the bundled pages', () => {
   assert.ok(plugins.some((p) => p.classpath === 'app.merofoundry.shell.MeroShellPlugin'));
   assert.match(read(dir, path.join('android', 'capacitor.settings.gradle')), /include ':meroshell-bootstrap'/);
   assert.match(read(dir, path.join('android', 'app', 'capacitor.build.gradle')), /implementation project\(':meroshell-bootstrap'\)/);
-  for (const page of ['index.html', 'hosted-integration.js']) {
+  for (const page of ['meroshell/index.html', 'meroshell/hosted-integration.js', 'meroshell/assembly.json']) {
     assert.ok(fs.existsSync(path.join(dir, 'android', 'app', 'src', 'main', 'assets', 'public', page)), page);
   }
-  const hosted = read(dir, path.join('android', 'app', 'src', 'main', 'assets', 'public', 'hosted-integration.js'));
+  assert.equal(fs.existsSync(path.join(dir, 'android', 'app', 'src', 'main', 'assets', 'public', 'index.html')), false, 'remote mode bundles no site');
+  const hosted = read(dir, path.join('android', 'app', 'src', 'main', 'assets', 'public', 'meroshell', 'hosted-integration.js'));
   assert.equal(hosted, read(ROOT, path.join('shell', 'hosted-integration.js')));
   assert.match(hosted, /function createPullToRefresh/, 'the synced project carries pull to refresh');
   const generated = JSON.parse(read(dir, path.join('android', 'app', 'src', 'main', 'assets', 'capacitor.config.json')));

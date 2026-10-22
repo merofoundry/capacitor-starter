@@ -36,6 +36,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Assemble the web assets
+        run: npm run web
+
       - name: Generate the Xcode project
         run: npx cap add ios
 

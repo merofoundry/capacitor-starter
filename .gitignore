@@ -1,6 +1,9 @@
 # Dependencies
 /node_modules
 
+# Web assets assembled by `npm run web` from shell/ and, in bundled mode, your built site
+/www/
+
 # Generated on every iOS run by `npx cap add ios`; never committed
 /ios/
 

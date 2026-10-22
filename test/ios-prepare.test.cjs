@@ -13,13 +13,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ios = require('../lib/ios-project.cjs');
-const { cap, node, starterCopy } = require('./helpers/starter-fixture.cjs');
+const { cap, node, prepareWeb, starterCopy } = require('./helpers/starter-fixture.cjs');
 
 const STARTER = { host: 'shop.example.com', appId: 'com.example.shop', appName: 'Shop & Co' };
-const PREPARED = [ios.IOS_FILES.infoPlist, ios.IOS_FILES.entitlements, ios.IOS_FILES.pbxproj];
+const PREPARED = [ios.IOS_FILES.infoPlist, ios.IOS_FILES.entitlements, ios.IOS_FILES.pbxproj, ios.IOS_FILES.appDelegate];
 
 function freshIos(starter = STARTER) {
   const dir = starterCopy({ starter });
+  prepareWeb(dir);
   cap(dir, ['add', 'ios']);
   cap(dir, ['sync', 'ios']);
   return dir;
@@ -48,6 +49,7 @@ test('preparation refuses to run before npx cap add ios', () => {
 
 test('preparation refuses a generated project that was not synced with the bootstrap', () => {
   const dir = starterCopy({ starter: STARTER });
+  prepareWeb(dir);
   cap(dir, ['add', 'ios']);
   fs.rmSync(path.join(dir, 'ios', 'App', 'App', 'capacitor.config.json'));
   const run = node(dir, ['scripts/prepare-ios.cjs']);
@@ -76,16 +78,46 @@ test('fresh generation: universal links are restricted to the configured host', 
   assert.equal((pbxproj.match(/CODE_SIGN_ENTITLEMENTS = App\/App\.entitlements;/g) || []).length, 2, 'Debug and Release');
 });
 
+test('fresh generation: the entitlements carry aps-environment=development for push', () => {
+  const dir = freshIos();
+  prepare(dir);
+  const entitlements = read(dir, ios.IOS_FILES.entitlements);
+  assert.match(entitlements, /<key>aps-environment<\/key>\s*<string>development<\/string>/);
+  assert.equal((entitlements.match(/aps-environment/g) || []).length, 1);
+});
+
+test('fresh generation: the AppDelegate posts the APNs registration result as Capacitor notifications', () => {
+  const dir = freshIos();
+  const generated = read(dir, ios.IOS_FILES.appDelegate);
+  assert.doesNotMatch(generated, /didRegisterForRemoteNotificationsWithDeviceToken/, 'the generated delegate lacks them');
+  prepare(dir);
+  const delegate = read(dir, ios.IOS_FILES.appDelegate);
+  assert.match(delegate, /func application\(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data\) \{\s*NotificationCenter\.default\.post\(name: \.capacitorDidRegisterForRemoteNotifications, object: deviceToken\)/);
+  assert.match(delegate, /func application\(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error\) \{\s*NotificationCenter\.default\.post\(name: \.capacitorDidFailToRegisterForRemoteNotifications, object: error\)/);
+  assert.match(delegate, /^import Capacitor$/m);
+  assert.ok(delegate.startsWith(generated.slice(0, generated.lastIndexOf('\n}'))), 'the generated methods are kept');
+  assert.match(delegate, /\n    \}\n\}\n?$/, 'the methods sit inside the class');
+});
+
+test('the AppDelegate edit is idempotent and refuses a delegate it cannot place them in', () => {
+  const source = 'import UIKit\nimport Capacitor\n\nclass AppDelegate: UIResponder, UIApplicationDelegate {\n    var window: UIWindow?\n}\n';
+  const once = ios.prepareAppDelegate(source);
+  assert.equal(ios.prepareAppDelegate(once), once);
+  assert.equal((once.match(/didRegisterForRemoteNotificationsWithDeviceToken/g) || []).length, 1);
+  assert.throws(() => ios.prepareAppDelegate('import UIKit\n'), /no AppDelegate class/);
+});
+
 test('fresh generation: the bootstrap plugin and its bundled pages are integrated by sync', () => {
   const dir = freshIos();
   prepare(dir);
   const generated = JSON.parse(read(dir, path.join('ios', 'App', 'App', 'capacitor.config.json')));
   assert.ok(generated.packageClassList.includes('MeroShellPlugin'));
   assert.match(read(dir, path.join('ios', 'App', 'CapApp-SPM', 'Package.swift')), /\.product\(name: "MeroshellBootstrap"/);
-  for (const page of ['index.html', 'hosted-integration.js', 'controller.js']) {
+  for (const page of [...ios.BUNDLED_PAGES, 'meroshell/controller.js', 'meroshell/assembly.json']) {
     assert.ok(fs.existsSync(path.join(dir, 'ios', 'App', 'App', 'public', page)), page);
   }
-  const hosted = read(dir, path.join('ios', 'App', 'App', 'public', 'hosted-integration.js'));
+  assert.equal(fs.existsSync(path.join(dir, 'ios', 'App', 'App', 'public', 'index.html')), false, 'remote mode bundles no site');
+  const hosted = read(dir, path.join('ios', 'App', 'App', 'public', 'meroshell', 'hosted-integration.js'));
   assert.equal(hosted, fs.readFileSync(path.join(__dirname, '..', 'shell', 'hosted-integration.js'), 'utf8'));
   assert.match(hosted, /function createPullToRefresh/, 'the generated project carries pull to refresh');
   const plugin = path.join('node_modules', 'meroshell-bootstrap', 'ios', 'Sources', 'MeroShellPlugin', 'MeroShellPlugin.swift');
@@ -108,6 +140,14 @@ test('fresh generation: a release build phase runs the package-stage guard befor
   const script = JSON.parse(phase[1].match(/shellScript = ("(?:[^"\\]|\\.)*");/)[1]);
   assert.match(script, /"\$\{CONFIGURATION\}" != "Debug"/);
   assert.match(script, /node scripts\/release-guard\.cjs --platform ios --stage package/);
+});
+
+test('preparation refuses a project synced before the shell pages moved to public/meroshell/', () => {
+  const dir = freshIos();
+  fs.rmSync(path.join(dir, 'ios', 'App', 'App', 'public', 'meroshell'), { recursive: true });
+  const run = node(dir, ['scripts/prepare-ios.cjs']);
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /meroshell\/index\.html is missing.*npm run web/);
 });
 
 test('the release build phase script blocks a preview-synced project and passes a clean one', () => {

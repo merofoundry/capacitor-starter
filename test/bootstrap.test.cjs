@@ -46,8 +46,8 @@ function flush() {
   return new Promise((resolve) => setImmediate(resolve));
 }
 
-function boot(transport = 'android') {
-  const html = fs.readFileSync(path.join(SHELL, 'index.html'), 'utf8');
+function boot(transport = 'android', shellDir = SHELL) {
+  const html = fs.readFileSync(path.join(shellDir, 'index.html'), 'utf8');
   const document = new FakeDocument(html);
   const posted = [];
   const window = { document, URL, console: { warn() {} } };
@@ -69,7 +69,7 @@ function boot(transport = 'android') {
   window.window = window;
   const context = vm.createContext(window);
   for (const src of scriptOrder(html)) {
-    vm.runInContext(fs.readFileSync(path.join(SHELL, src), 'utf8'), context, { filename: src });
+    vm.runInContext(fs.readFileSync(path.join(shellDir, src), 'utf8'), context, { filename: src });
   }
   const native = {
     posted,
@@ -191,4 +191,27 @@ test('a deep link off the application host never reaches the native WebView', as
     native.posted.filter((m) => m.cmd === 'loadHost').map((m) => m.args.path),
     ['/x'],
   );
+});
+
+test('the overlay boots from the assembled www/meroshell/ in both modes, beside a bundled site', async () => {
+  const { prepareWeb } = require('../lib/web-assets.cjs');
+  const { tempDir } = require('./helpers/temp.cjs');
+  for (const [mode, transport] of [['remote', 'ios'], ['bundled', 'android']]) {
+    const dir = tempDir('meroshell-boot-');
+    fs.cpSync(SHELL, path.join(dir, 'shell'), { recursive: true });
+    const starter = { host: 'shop.example.com', appId: 'com.example.shop', appName: 'Shop', mode };
+    if (mode === 'bundled') {
+      starter.site = 'site';
+      fs.mkdirSync(path.join(dir, 'site'));
+      fs.writeFileSync(path.join(dir, 'site', 'index.html'), '<!doctype html><title>Shop</title>');
+    }
+    fs.writeFileSync(path.join(dir, 'starter.config.json'), JSON.stringify(starter));
+    prepareWeb({ rootDir: dir });
+    const { document, native } = boot(transport, path.join(dir, 'www', 'meroshell'));
+    assert.deepEqual(native.cmds(), ['ready'], mode);
+    await native.reply('ready', { ...LAUNCH, platform: transport, mode });
+    await native.event('openSettings', {});
+    assert.equal(document.visibleView(), 'settings');
+    assert.equal(field(document, 'settings', 'host'), 'shop.example.com', `${mode}: settings name the application host`);
+  }
 });
